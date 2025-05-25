@@ -11,7 +11,7 @@ const Sidebar = () => {
 
   return (
     <div
-      className={`bg-red-600 text-white h-screen transition-all duration-300 ${
+      className={`bg-blue-600 text-white h-screen transition-all duration-300 ${
         isOpen ? "w-64" : "w-16"
       }`}
     >
@@ -19,7 +19,7 @@ const Sidebar = () => {
         {isOpen && <h2 className="text-lg font-bold">Цэс</h2>}
         <button
           onClick={toggleSidebar}
-          className="p-2 hover:bg-pink-400 rounded"
+          className="p-2 hover:bg-blue-700 rounded"
         >
           {isOpen ? (
             <ChevronLeftIcon className="w-6 h-6" />
@@ -33,7 +33,7 @@ const Sidebar = () => {
           <li>
             <Link
               to="/dashboard"
-              className={`flex items-center p-4 hover:bg-pink-400 ${
+              className={`flex items-center p-4 hover:bg-blue-700 ${
                 isOpen ? "justify-start" : "justify-center"
               }`}
             >
@@ -45,7 +45,7 @@ const Sidebar = () => {
           <li>
             <Link
               to="/profile"
-              className={`flex items-center p-4 hover:bg-pink-400 ${
+              className={`flex items-center p-4 hover:bg-blue-700 ${
                 isOpen ? "justify-start" : "justify-center"
               }`}
             >
