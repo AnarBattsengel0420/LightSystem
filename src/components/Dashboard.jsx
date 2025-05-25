@@ -8,7 +8,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 // Replace icons with plain text if needed
 const FaLightbulb = () => <span>💡</span>;
-const FaPowerOff = () => <span>⏻</span>; 
+const FaPowerOff = () => <span>⏻</span>;
 const MdBrightness6 = () => <span>🔆</span>;
 
 const Dashboard = () => {
@@ -109,6 +109,8 @@ const Dashboard = () => {
         ...sensorState,
         time: 0,
         product1: 0,
+        brightness: 0, // Set brightness to 0
+        pwm: 0, // Set PWM to 0
       });
     } catch (error) {
       setError("Failed to turn off device: " + error.message);
