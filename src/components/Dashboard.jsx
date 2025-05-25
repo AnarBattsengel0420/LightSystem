@@ -20,9 +20,11 @@ const Dashboard = () => {
     pwm: 0,
     lightSensor: 0,
   });
+  const [localBrightness, setLocalBrightness] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [debouncedUpdateTimeout, setDebouncedUpdateTimeout] = useState(null);
 
   // Read state from Firebase
   useEffect(() => {
@@ -58,24 +60,43 @@ const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Handle brightness change
-  const handleBrightnessChange = async (e) => {
-    const brightnessValue = parseInt(e.target.value); // 0-100%
-    const pwmValue = Math.round((brightnessValue / 100) * 255); // 0-255 PWM
+  // Synchronize local state with Firebase state
+  useEffect(() => {
+    setLocalBrightness(sensorState.brightness);
+  }, [sensorState.brightness]);
 
-    setIsLoading(true);
-    setError(null);
-    try {
-      await set(ref(db, "Sensor/"), {
-        ...sensorState,
-        brightness: brightnessValue,
-        pwm: pwmValue,
-      });
-    } catch (error) {
-      setError("Failed to update brightness: " + error.message);
-    } finally {
-      setIsLoading(false);
+  // Handle brightness change
+  const handleBrightnessChange = (e) => {
+    const brightnessValue = parseInt(e.target.value);
+
+    // Update local state immediately for responsive UI
+    setLocalBrightness(brightnessValue);
+
+    // Clear any existing timeout
+    if (debouncedUpdateTimeout) {
+      clearTimeout(debouncedUpdateTimeout);
     }
+
+    // Set a new timeout to update Firebase after dragging stops
+    const timeoutId = setTimeout(async () => {
+      const pwmValue = Math.round((brightnessValue / 100) * 255);
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        await set(ref(db, "Sensor/"), {
+          ...sensorState,
+          brightness: brightnessValue,
+          pwm: pwmValue,
+        });
+      } catch (error) {
+        setError("Failed to update brightness: " + error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300); // 300ms delay
+
+    setDebouncedUpdateTimeout(timeoutId);
   };
 
   // Handle turning device ON
@@ -195,7 +216,7 @@ const Dashboard = () => {
             id="brightness"
             min="0"
             max="100"
-            value={sensorState.brightness}
+            value={localBrightness}
             onChange={handleBrightnessChange}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
             disabled={sensorState.product1 === 0 || isLoading}
