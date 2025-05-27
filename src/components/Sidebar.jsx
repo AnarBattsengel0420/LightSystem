@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
+import { RiDashboardLine, RiFlashlightLine } from "react-icons/ri"; // Import icons
 
 const Sidebar = () => {
   const [isOpen, setIsOpen] = useState(true);
+  const location = useLocation();
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -31,26 +33,30 @@ const Sidebar = () => {
       <nav className="mt-4">
         <ul>
           <li>
-            <Link
+            <NavLink
               to="/dashboard"
-              className={`flex items-center p-4 hover:bg-blue-700 ${
-                isOpen ? "justify-start" : "justify-center"
-              }`}
+              className={({ isActive }) =>
+                `flex items-center p-4 hover:bg-blue-700 ${
+                  isActive ? "bg-blue-700" : ""
+                } ${isOpen ? "justify-start" : "justify-center"}`
+              }
             >
-              <span className={`${isOpen ? "inline" : "hidden"}`}>
-                Dashboard
-              </span>
-            </Link>
+              <RiDashboardLine className="w-5 h-5" />
+              {isOpen && <span className="ml-3">Хянах самбар</span>}
+            </NavLink>
           </li>
           <li>
-            <Link
-              to="/profile"
-              className={`flex items-center p-4 hover:bg-blue-700 ${
-                isOpen ? "justify-start" : "justify-center"
-              }`}
+            <NavLink
+              to="/power-stats"
+              className={({ isActive }) =>
+                `flex items-center p-4 hover:bg-blue-700 ${
+                  isActive ? "bg-blue-700" : ""
+                } ${isOpen ? "justify-start" : "justify-center"}`
+              }
             >
-              <span className={`${isOpen ? "inline" : "hidden"}`}>нэмэлт</span>
-            </Link>
+              <RiFlashlightLine className="w-5 h-5" />
+              {isOpen && <span className="ml-3">Цахилгааны мэдээлэл</span>}
+            </NavLink>
           </li>
         </ul>
       </nav>

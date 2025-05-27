@@ -7,6 +7,7 @@ import Register from "./components/Register";
 import PrivateRoute from "./components/PrivateRoute";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
+import PowerStatsPage from "./components/PowerStatsPage"; // Add this import
 
 function AppLayout() {
   const location = useLocation();
@@ -31,6 +32,15 @@ function AppLayout() {
               element={
                 <PrivateRoute>
                   <Dashboard />
+                </PrivateRoute>
+              }
+            />
+            {/* Add Power Stats Page Route */}
+            <Route
+              path="/power-stats"
+              element={
+                <PrivateRoute>
+                  <PowerStatsPage />
                 </PrivateRoute>
               }
             />

@@ -1,7 +1,8 @@
 import { onValue, ref, set, update } from "firebase/database";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../firebase";
+import { Link } from "react-router-dom";
 
 // Simple icon components
 const FaLightbulb = () => <span>💡</span>;
@@ -32,6 +33,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [sliderDragging, setSliderDragging] = useState(false);
+  const isMounted = useRef(true);
 
   const handleError = createErrorHandler(setError, setIsLoading);
 
@@ -110,12 +112,12 @@ const Dashboard = () => {
 
   // Handle turning device ON
   const handleTurnOn = async () => {
-    const currentBrightness = sensorState.brightness || 50;
-    const pwmValue = Math.round((currentBrightness / 100) * 255);
-
     setIsLoading(true);
-    setError(null);
     try {
+      const currentBrightness = sensorState.brightness || 50;
+      const pwmValue = Math.round((currentBrightness / 100) * 255);
+
+      setError(null);
       await set(ref(db, "Sensor/"), {
         ...sensorState,
         time: 1,
@@ -126,7 +128,9 @@ const Dashboard = () => {
     } catch (error) {
       handleError("turn on device", error);
     } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -145,7 +149,9 @@ const Dashboard = () => {
     } catch (error) {
       handleError("turn off device", error);
     } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -229,11 +235,27 @@ const Dashboard = () => {
     }
   }, [currentUser]);
 
+  // Add connection status monitoring
+  useEffect(() => {
+    const connectedRef = ref(db, ".info/connected");
+    const unsubscribe = onValue(connectedRef, (snap) => {
+      if (snap.val() === false) {
+        setError("Firebase connection lost. Some features may not work.");
+      } else {
+        setError(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   return (
     <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl mt-8">
       <div className="p-8">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Light Control</h2>
+          <h2 className="text-2xl font-bold text-gray-800">
+            Гэрэл удирдах хэсэг
+          </h2>
           <div className="text-sm text-gray-500">
             {lastUpdated && `Last updated: ${lastUpdated.toLocaleTimeString()}`}
           </div>
@@ -256,7 +278,7 @@ const Dashboard = () => {
               }`}
             />
             <div className="flex-1">
-              <h3 className="text-lg font-medium">Light Status</h3>
+              <h3 className="text-lg font-medium">Гэрлийн төлөв</h3>
               <p
                 className={`font-medium ${
                   sensorState.product1 === 1 ? "text-green-600" : "text-red-600"
@@ -270,12 +292,12 @@ const Dashboard = () => {
           <div className="flex items-center mb-4">
             <MdBrightness6 className="text-2xl mr-3 text-blue-500" />
             <div className="flex-1">
-              <h3 className="text-lg font-medium">Brightness</h3>
+              <h3 className="text-lg font-medium">Тодрол</h3>
               <p className="font-medium text-blue-600">
                 {sensorState.brightness}%
               </p>
               <p className="text-xs text-gray-500">
-                PWM Value: {sensorState.pwm}/255
+                PWM Утга: {sensorState.pwm}/255
               </p>
             </div>
           </div>
@@ -284,7 +306,7 @@ const Dashboard = () => {
             <div className="flex items-center">
               <FaLightbulb className="text-2xl mr-3 text-orange-400" />
               <div className="flex-1">
-                <h3 className="text-lg font-medium">Ambient Light</h3>
+                <h3 className="text-lg font-medium">Эргэн тойрны гэрэл</h3>
                 <p className="font-medium text-orange-600">
                   {sensorState.lightSensor} lux
                 </p>
@@ -294,12 +316,22 @@ const Dashboard = () => {
         </div>
 
         <div className="mb-8">
-          <label
-            htmlFor="brightness"
-            className="block text-sm font-medium text-gray-700 mb-2"
-          >
-            Brightness Control
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label
+              htmlFor="brightness"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Тодролыг тохируулах
+            </label>
+
+            {/* Add a helpful explanation for when slider is disabled */}
+            {sensorState.autoMode === 1 && (
+              <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
+                Автомат горим идэвхтэй үед тодролыг өөрчлөх боломжгүй
+              </div>
+            )}
+          </div>
+
           <input
             type="range"
             id="brightness"
@@ -313,21 +345,26 @@ const Dashboard = () => {
             onTouchEnd={handleSliderRelease}
             onMouseMove={(e) => {
               if (e.buttons === 1) {
-                // Left mouse button is pressed
                 handleBrightnessChange(e);
               }
             }}
             onTouchMove={handleBrightnessChange}
-            className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            className={`w-full h-3 bg-gray-200 rounded-lg appearance-none 
+      ${
+        sensorState.autoMode === 1
+          ? "opacity-50 cursor-not-allowed"
+          : "cursor-pointer"
+      }`}
             style={{
-              // Enhanced styling for better thumb movement
               background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${localBrightness}%, #e5e7eb ${localBrightness}%, #e5e7eb 100%)`,
               height: "8px",
               outline: "none",
               WebkitAppearance: "none",
             }}
             disabled={
-              sensorState.product1 === 0 || (isLoading && !sliderDragging)
+              sensorState.product1 === 0 ||
+              (isLoading && !sliderDragging) ||
+              sensorState.autoMode === 1
             }
           />
           <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -341,7 +378,7 @@ const Dashboard = () => {
           <h3 className="text-lg font-semibold mb-2">Sensor Information</h3>
 
           <div className="flex justify-between mb-2">
-            <span>Motion Detected:</span>
+            <span>Хөдөлгөөн:</span>
             <span
               className={`font-medium ${
                 sensorState.motionSensor === 1
@@ -354,13 +391,13 @@ const Dashboard = () => {
           </div>
 
           <div className="flex justify-between mb-2">
-            <span>Light Sensor:</span>
+            <span>Гэрлийн мэдрэгч:</span>
             <span className="font-medium">{sensorState.lightSensor} lux</span>
           </div>
 
           <div className="flex justify-between items-center mt-4">
             <div className="flex items-center">
-              <span>Auto Mode:</span>
+              <span>Автомат удирдлага:</span>
               <div className="relative inline-block w-10 ml-2 align-middle select-none">
                 <input
                   type="checkbox"
@@ -421,9 +458,36 @@ const Dashboard = () => {
 
           <p className="text-xs text-gray-500 mt-2">
             {sensorState.autoMode === 1
-              ? "Motion sensors are controlling the light automatically."
-              : "Manual control mode is active. Sensors are ignored."}
+              ? "Автомат удирдлага."
+              : "Өөрөө удирдлага."}
           </p>
+        </div>
+
+        <div className="mt-4 p-4 bg-white rounded-lg shadow-md">
+          <h3 className="text-lg font-semibold mb-2">Эрчим хүчний хэрэглээ</h3>
+
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm text-gray-600">
+                Одоогийн хүчдэл:{" "}
+                {sensorState.instantPower != null
+                  ? `${Number(sensorState.instantPower).toFixed(2)} W`
+                  : "N/A"}
+              </p>
+              <p className="text-sm text-gray-600">
+                Нийт эрчим хүчний хэрэглээ:{" "}
+                {sensorState.powerWh
+                  ? `${sensorState.powerWh.toFixed(2)} Wh`
+                  : "N/A"}
+              </p>
+            </div>
+            <Link
+              to="/power-stats"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Дэлгэрэнгүй мэдээлэл
+            </Link>
+          </div>
         </div>
 
         <div className="flex gap-4 mt-6">
