@@ -27,3 +27,39 @@ body {
 .main-content {
   flex: 1;
 }
+
+/* Add to your global CSS or component style */
+@media (max-width: 768px) {
+  .max-w-md {
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+  
+  input[type=range]::-webkit-slider-thumb {
+    height: 24px;
+    width: 24px;
+    margin-top: -8px;
+  }
+}
+
+/* Fix for range input styling */
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  margin-top: -6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+input[type=range]::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  border: none;
+}

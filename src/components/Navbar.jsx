@@ -16,7 +16,7 @@ const Navbar = () => {
   }
 
   return (
-    <nav className="bg-blue-600 text-white shadow-md">
+    <nav className="bg-blue-600 text-white sticky top-0 left-0 w-full shadow-md">
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
         <Link to="/" className="text-xl font-bold">
           Light Control System

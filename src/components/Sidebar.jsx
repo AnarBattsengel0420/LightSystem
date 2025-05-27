@@ -11,7 +11,7 @@ const Sidebar = () => {
 
   return (
     <div
-      className={`bg-blue-600 text-white h-screen transition-all duration-300 ${
+      className={`bg-blue-600 text-white h-screen sticky top-0 left-0 transition-all duration-300 ${
         isOpen ? "w-64" : "w-16"
       }`}
     >
