@@ -1,33 +1,26 @@
 // src/components/PowerStatsPage.jsx
+import React from "react";
 import PowerUsageGraph from "./PowerUsageGraph";
-import { db } from "../firebase"; // Adjust the import based on your project structure
-import { query, ref, orderByChild } from "firebase/database";
-
-// Inside your PowerStatsPage component:
+import ComponentBreakdownChart from "./ComponentBreakdownChart";
 
 const PowerStatsPage = () => {
-  // This component will render the power usage statistics page
-  // It can include various components like graphs, tables, etc.
-
-  // You can add state and logic here if needed
-  // For now, it just renders the PowerUsageGraph component
-
-  // Firebase query to get power usage data
-  const powerRef = query(ref(db, "PowerUsage"), orderByChild("timestamp"));
-
   return (
-    <div className="max-w-6xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">
-        Цахилгааны хэрэглээний статистик
-      </h1>
-
-      <div className="grid grid-cols-1 gap-6">
-        {/* Power Usage Line Graph */}
-        <PowerUsageGraph powerRef={powerRef} />
-
-        {/* Other statistics */}
-        {/* ... */}
+    <div className="max-w-7xl mx-auto p-4 space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+          Цахилгааны хэрэглээний статистик
+        </h1>
+        <p className="text-gray-600">
+          ESP32 IoT гэрлийн системийн дэлгэрэнгүй чадлын шинжилгээ
+        </p>
       </div>
+
+      {/* Main Power Usage Graph */}
+      <PowerUsageGraph />
+
+      {/* Component Breakdown Charts */}
+      <ComponentBreakdownChart />
     </div>
   );
 };

@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 const FaLightbulb = () => <span>💡</span>;
 const FaPowerOff = () => <span>⏻</span>;
 const MdBrightness6 = () => <span>🔆</span>;
+const MdAutoMode = () => <span>🤖</span>; // Added auto mode icon
 
 // Helper function for consistent error handling
 const createErrorHandler = (setError, setIsLoading) => {
@@ -45,19 +46,27 @@ const Dashboard = () => {
       (snapshot) => {
         const data = snapshot.val();
         if (data) {
-          setSensorState({
-            time: data.time || 0,
-            product1: data.product1 || 0,
-            brightness: data.brightness || 0,
-            pwm: data.pwm || 0,
-            lightSensor: data.lightSensor || 0,
-            motionSensor: data.motionSensor || 0,
-            // IMPORTANT: Check both fields for auto mode
-            autoMode:
-              data.autoModeState !== undefined
-                ? data.autoModeState
-                : data.autoMode || 0,
+          // PREVENT rapid state changes during auto mode transitions
+          setSensorState((prevState) => {
+            const newState = {
+              time: data.time || 0,
+              product1: data.product1 || 0,
+              brightness: data.brightness || 0,
+              pwm: data.pwm || 0,
+              lightSensor: data.lightSensor || 0,
+              motionSensor: data.motionSensor || 0,
+              autoMode: data.autoMode || 0,
+            };
+
+            // Only update if there's a significant change (prevents flickering)
+            const hasSignificantChange =
+              newState.autoMode !== prevState.autoMode ||
+              newState.product1 !== prevState.product1 ||
+              Math.abs(newState.brightness - prevState.brightness) > 2;
+
+            return hasSignificantChange ? newState : prevState;
           });
+
           setLastUpdated(new Date());
         }
         setError(null);
@@ -77,12 +86,43 @@ const Dashboard = () => {
     }
   }, [sensorState.brightness, sliderDragging]);
 
+  // Add this check to ALL your Firebase update functions:
+  const updateFirebaseIfManualMode = async (updates) => {
+    // CRITICAL: Only update Firebase if NOT in auto mode
+    if (sensorState.autoMode === 1) {
+      console.log(
+        "Auto mode active - blocking Firebase update to prevent ESP32 interference"
+      );
+      return;
+    }
+
+    try {
+      await set(ref(db, "Sensor/"), {
+        ...sensorState,
+        ...updates,
+      });
+    } catch (error) {
+      console.error("Firebase update failed:", error);
+    }
+  };
+
   // Handle brightness change with immediate local update and delayed Firebase update
   const handleBrightnessChange = (e) => {
-    const brightnessValue = parseInt(e.target.value);
+    const newBrightness = parseInt(e.target.value);
 
-    // Only update local state, don't send to Firebase
-    setLocalBrightness(brightnessValue);
+    // Always update local state for display
+    setLocalBrightness(newBrightness);
+
+    // Only send to Firebase in manual mode
+    if (sensorState.autoMode !== 1) {
+      updateFirebaseIfManualMode({
+        brightness: newBrightness,
+        pwm:
+          newBrightness === 0
+            ? 255
+            : Math.round(254 - ((newBrightness - 1) * 254) / 99),
+      });
+    }
   };
 
   // First, wrap handleSliderRelease in useCallback to avoid recreation on every render
@@ -92,7 +132,11 @@ const Dashboard = () => {
       // Update both values in a single atomic operation
       const updates = {};
       updates["/Sensor/brightness"] = localBrightness;
-      updates["/Sensor/pwm"] = Math.round((localBrightness / 100) * 255);
+      // Fix PWM calculation to match ESP32
+      updates["/Sensor/pwm"] =
+        localBrightness === 0
+          ? 255
+          : Math.round(254 - ((localBrightness - 1) * 254) / 99);
 
       setIsLoading(true);
       setError(null);
@@ -110,83 +154,52 @@ const Dashboard = () => {
     setSliderDragging(false);
   }, [localBrightness, sensorState.brightness, handleError]);
 
-  // Handle turning device ON
   const handleTurnOn = async () => {
     setIsLoading(true);
     try {
-      const currentBrightness = sensorState.brightness || 50;
-      const pwmValue = Math.round((currentBrightness / 100) * 255);
-
-      setError(null);
-      await set(ref(db, "Sensor/"), {
-        ...sensorState,
-        time: 1,
-        product1: 1,
-        brightness: currentBrightness,
-        pwm: pwmValue,
+      // Simple update - just set product1 to 1
+      await update(ref(db), {
+        "/Sensor/product1": 1,
       });
+      console.log("System turned ON");
     } catch (error) {
       handleError("turn on device", error);
     } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   };
 
-  // Handle turning device OFF
+  // Handle turning device OFF - SIMPLIFIED
   const handleTurnOff = async () => {
     setIsLoading(true);
-    setError(null);
     try {
-      await set(ref(db, "Sensor/"), {
-        ...sensorState,
-        time: 0,
-        product1: 0,
-        brightness: 0,
-        pwm: 0,
+      // Simple update - just set product1 to 0
+      await update(ref(db), {
+        "/Sensor/product1": 0,
       });
+      console.log("System turned OFF");
     } catch (error) {
       handleError("turn off device", error);
     } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   };
 
   // Handle auto mode toggle
   const handleAutoModeToggle = async () => {
-    // Optimistically update UI state immediately with loading indicator
     setIsLoading(true);
 
     try {
-      // First, get the current auto mode value to confirm
       const newAutoModeValue = sensorState.autoMode === 1 ? 0 : 1;
 
-      // Create a complete update with timestamp
+      // Simple, direct update - no delays!
       const updates = {};
       updates["/Sensor/autoMode"] = newAutoModeValue;
-      updates["/Sensor/lastAutoModeChange"] = Date.now();
 
-      // Update Firebase
       await update(ref(db), updates);
-      console.log(
-        `Auto mode toggle initiated: ${
-          sensorState.autoMode === 1 ? "ON→OFF" : "OFF→ON"
-        }`
-      );
+      console.log(`Auto mode toggle: ${newAutoModeValue === 1 ? "ON" : "OFF"}`);
 
-      // IMPORTANT: Add a small delay to allow ESP32 to process the change
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Now update local state (after delay)
-      setSensorState((prev) => ({
-        ...prev,
-        autoMode: newAutoModeValue,
-      }));
-
-      console.log(`Auto mode toggle completed after delay`);
+      // No artificial delay - let ESP32 respond naturally!
     } catch (error) {
       handleError("toggle auto mode", error);
     } finally {
@@ -302,6 +315,28 @@ const Dashboard = () => {
             </div>
           </div>
 
+          {/* Auto Mode Status Section */}
+          <div className="flex items-center mb-4">
+            <MdAutoMode className="text-2xl mr-3 text-purple-500" />
+            <div className="flex-1">
+              <h3 className="text-lg font-medium">Автомат горим</h3>
+              <p
+                className={`font-medium ${
+                  sensorState.autoMode === 1
+                    ? "text-green-600"
+                    : "text-orange-600"
+                }`}
+              >
+                {sensorState.autoMode === 1 ? "Идэвхтэй" : "Идэвхгүй"}
+              </p>
+              <p className="text-xs text-gray-500">
+                {sensorState.autoMode === 1
+                  ? "Хөдөлгөөн мэдрэгчээр удирдана"
+                  : "Гараар удирдана"}
+              </p>
+            </div>
+          </div>
+
           {sensorState.lightSensor > 0 && (
             <div className="flex items-center">
               <FaLightbulb className="text-2xl mr-3 text-orange-400" />
@@ -313,6 +348,28 @@ const Dashboard = () => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Auto Mode Toggle Button */}
+        <div className="mb-6">
+          <button
+            onClick={handleAutoModeToggle}
+            className={`w-full px-4 py-3 rounded-lg font-medium transition-all duration-200 
+                       disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center
+                       ${
+                         sensorState.autoMode === 1
+                           ? "bg-purple-600 hover:bg-purple-700 text-white"
+                           : "bg-gray-600 hover:bg-gray-700 text-white"
+                       }`}
+            disabled={isLoading}
+          >
+            <MdAutoMode className="mr-2" />
+            {isLoading
+              ? "Өөрчилж байна..."
+              : sensorState.autoMode === 1
+              ? "Автомат горимыг унтраах"
+              : "Автомат горимыг асаах"}
+          </button>
         </div>
 
         <div className="mb-8">
@@ -337,35 +394,22 @@ const Dashboard = () => {
             id="brightness"
             min="0"
             max="100"
-            value={localBrightness}
-            onChange={handleBrightnessChange}
-            onMouseDown={() => setSliderDragging(true)}
-            onMouseUp={handleSliderRelease}
-            onTouchStart={() => setSliderDragging(true)}
-            onTouchEnd={handleSliderRelease}
-            onMouseMove={(e) => {
-              if (e.buttons === 1) {
-                handleBrightnessChange(e);
-              }
-            }}
-            onTouchMove={handleBrightnessChange}
-            className={`w-full h-3 bg-gray-200 rounded-lg appearance-none 
-      ${
-        sensorState.autoMode === 1
-          ? "opacity-50 cursor-not-allowed"
-          : "cursor-pointer"
-      }`}
-            style={{
-              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${localBrightness}%, #e5e7eb ${localBrightness}%, #e5e7eb 100%)`,
-              height: "8px",
-              outline: "none",
-              WebkitAppearance: "none",
-            }}
-            disabled={
-              sensorState.product1 === 0 ||
-              (isLoading && !sliderDragging) ||
+            value={
               sensorState.autoMode === 1
+                ? sensorState.brightness || 0
+                : localBrightness
             }
+            onChange={
+              sensorState.autoMode === 1 ? () => {} : handleBrightnessChange
+            }
+            disabled={sensorState.autoMode === 1 || isLoading}
+            className={`w-full h-3 bg-gray-200 rounded-lg appearance-none 
+    ${
+      sensorState.autoMode === 1
+        ? "opacity-50 cursor-not-allowed"
+        : "cursor-pointer"
+    }
+    ${isLoading ? "opacity-50" : ""}`}
           />
           <div className="flex justify-between text-xs text-gray-500 mt-1">
             <span>0%</span>
@@ -374,120 +418,14 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-          <h3 className="text-lg font-semibold mb-2">Sensor Information</h3>
-
-          <div className="flex justify-between mb-2">
-            <span>Хөдөлгөөн:</span>
-            <span
-              className={`font-medium ${
-                sensorState.motionSensor === 1
-                  ? "text-green-600"
-                  : "text-gray-600"
-              }`}
-            >
-              {sensorState.motionSensor === 1 ? "Yes" : "No"}
-            </span>
-          </div>
-
-          <div className="flex justify-between mb-2">
-            <span>Гэрлийн мэдрэгч:</span>
-            <span className="font-medium">{sensorState.lightSensor} lux</span>
-          </div>
-
-          <div className="flex justify-between items-center mt-4">
-            <div className="flex items-center">
-              <span>Автомат удирдлага:</span>
-              <div className="relative inline-block w-10 ml-2 align-middle select-none">
-                <input
-                  type="checkbox"
-                  name="autoMode"
-                  id="autoMode"
-                  checked={sensorState.autoMode === 1}
-                  onChange={handleAutoModeToggle}
-                  disabled={isLoading}
-                  className="sr-only"
-                />
-                <label
-                  htmlFor="autoMode"
-                  className={`block overflow-hidden h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in ${
-                    isLoading ? "opacity-50 cursor-not-allowed" : ""
-                  } ${
-                    sensorState.autoMode === 1 ? "bg-green-500" : "bg-red-500"
-                  }`}
-                >
-                  {isLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 z-10">
-                      <div className="w-3 h-3 border-2 border-white rounded-full animate-spin"></div>
-                    </div>
-                  )}
-                  <span
-                    className={`block h-6 w-6 rounded-full bg-white shadow transform transition-transform duration-200 ease-in ${
-                      sensorState.autoMode === 1
-                        ? "translate-x-4"
-                        : "translate-x-0"
-                    }`}
-                  ></span>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex items-center">
-              <span
-                className={`text-sm font-medium ${
-                  sensorState.autoMode === 1 ? "text-green-600" : "text-red-600"
-                }`}
-              >
-                {isLoading
-                  ? "UPDATING..."
-                  : sensorState.autoMode === 1
-                  ? "ENABLED"
-                  : "DISABLED"}
-              </span>
-              <div
-                className={`ml-2 w-3 h-3 rounded-full ${
-                  isLoading
-                    ? "bg-yellow-500 animate-pulse"
-                    : sensorState.autoMode === 1
-                    ? "bg-green-500"
-                    : "bg-red-500"
-                }`}
-              ></div>
-            </div>
-          </div>
-
-          <p className="text-xs text-gray-500 mt-2">
-            {sensorState.autoMode === 1
-              ? "Автомат удирдлага."
-              : "Өөрөө удирдлага."}
-          </p>
-        </div>
-
-        <div className="mt-4 p-4 bg-white rounded-lg shadow-md">
-          <h3 className="text-lg font-semibold mb-2">Эрчим хүчний хэрэглээ</h3>
-
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm text-gray-600">
-                Одоогийн хүчдэл:{" "}
-                {sensorState.instantPower != null
-                  ? `${Number(sensorState.instantPower).toFixed(2)} W`
-                  : "N/A"}
-              </p>
-              <p className="text-sm text-gray-600">
-                Нийт эрчим хүчний хэрэглээ:{" "}
-                {sensorState.powerWh
-                  ? `${sensorState.powerWh.toFixed(2)} Wh`
-                  : "N/A"}
-              </p>
-            </div>
-            <Link
-              to="/power-stats"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Дэлгэрэнгүй мэдээлэл
-            </Link>
-          </div>
+        {/* Link to Power Stats (instead of showing power data on dashboard) */}
+        <div className="mb-6">
+          <Link
+            to="/power-stats"
+            className="block w-full text-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            📊 Цахилгааны хэрэглээний график үзэх
+          </Link>
         </div>
 
         <div className="flex gap-4 mt-6">
@@ -499,8 +437,8 @@ const Dashboard = () => {
           >
             <FaPowerOff className="mr-2" />
             {isLoading && sensorState.product1 === 0
-              ? "Turning on..."
-              : "Turn ON"}
+              ? "Асааж байна..."
+              : "Асаах"}
           </button>
           <button
             onClick={handleTurnOff}
@@ -510,8 +448,8 @@ const Dashboard = () => {
           >
             <FaPowerOff className="mr-2" />
             {isLoading && sensorState.product1 === 1
-              ? "Turning off..."
-              : "Turn OFF"}
+              ? "Унтрааж байна..."
+              : "Унтраах"}
           </button>
         </div>
       </div>
